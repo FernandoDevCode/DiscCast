@@ -20,8 +20,8 @@ public partial class MainWindow : Window
     private VideoView? videoView;
     private AudioRoutingLease? playbackLease;
     private bool initialized, closing, closed, fullscreen;
-    private string transmitStatus = "Use a mesma rede local ou VPN privada para compartilhar.";
-    private string watchStatus = "Use um convite de alguém na mesma rede local ou VPN privada.";
+    private string transmitStatus = "Use Internet para compartilhar com alguém em outra rede.";
+    private string watchStatus = "Cole o convite de quem está transmitindo.";
     private WindowState oldState;
     private WindowStyle oldStyle;
 
@@ -184,7 +184,8 @@ public partial class MainWindow : Window
         var app = ProcessBox.SelectedItem as AudioApplication;
         StartButton.IsEnabled = false;
         bool system = SharesSystemAudio;
-        await session.StartAsync(new(source, new(SharesAppAudio || system, system ? AudioMode.SystemExceptDiscord : AudioMode.Application, app?.ProcessId), SelectedProfile));
+        await session.StartAsync(new(source, new(SharesAppAudio || system, system ? AudioMode.SystemExceptDiscord : AudioMode.Application, app?.ProcessId),
+            SelectedProfile, Internet: RouteBox.SelectedIndex == 0));
         if (!closing) UpdateStartAvailability();
     }
     private async void Stop_Click(object sender, RoutedEventArgs e) => await session.StopAsync();
@@ -220,10 +221,11 @@ public partial class MainWindow : Window
     private void Connect()
     {
         if (WatchTab.IsChecked != true || player != null || closing) return;
-        if (!Uri.TryCreate(WatchAddress.Text.Trim(), UriKind.Absolute, out var uri) ||
-            uri.Scheme != "rtsp" || uri.UserInfo.Length == 0 || string.IsNullOrEmpty(uri.Host))
+        if (!Uri.TryCreate(WatchAddress.Text.Trim(), UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.Host) ||
+            !(uri.Scheme == "rtsp" && uri.UserInfo.Length > 0 ||
+              uri.Scheme == "https" && uri.UserInfo.Length == 0 && uri.AbsolutePath.EndsWith("/index.m3u8", StringComparison.Ordinal)))
         {
-            SetWatchStatus("Cole o convite RTSP completo da sala e tente novamente.");
+            SetWatchStatus("Cole o convite completo da sala (HTTPS ou RTSP) e tente novamente.");
             WatchAddress.Focus();
             return;
         }
@@ -245,7 +247,7 @@ public partial class MainWindow : Window
                 SetWatchStatus("Assistindo à transmissão.");
             });
             current.EncounteredError += (_, _) => Ui(() => PlaybackEnded(current,
-                "Não foi possível conectar. Confira o convite, se a sala está ao vivo e o acesso à porta TCP 8554."));
+                "Não foi possível conectar. Confira o convite, sua conexão e se a sala ainda está ao vivo."));
             current.EndReached += (_, _) => Ui(() => PlaybackEnded(current, "A transmissão terminou ou a conexão caiu."));
 
             // Keep the native window out of the visual tree until Assistir needs it.
@@ -317,7 +319,7 @@ public partial class MainWindow : Window
         WindowState = enabled ? WindowState.Maximized : oldState;
     }
     private void NetworkHelp_Click(object sender, RoutedEventArgs e) => System.Windows.MessageBox.Show(this,
-        "Use a mesma rede local ou uma VPN privada nos dois PCs.\n\nSe o Firewall do Windows bloquear a conexão, permita o MediaMTX apenas na rede privada ou crie uma regra de entrada para TCP 8554. O DiscCast não altera o firewall.\n\nO convite contém a senha da sala. Não encaminhe a porta no roteador nem publique o convite na Internet.", "Conectar pela rede", MessageBoxButton.OK, MessageBoxImage.Information);
+        "No modo Internet, quem transmite abre um túnel temporário pela Cloudflare. Envie o convite apenas a quem deve assistir. Ele deixa de funcionar ao encerrar a sala.\n\nNo modo Rede local / VPN, os PCs precisam alcançar a porta TCP 8554 pela rede privada.", "Conectar pela rede", MessageBoxButton.OK, MessageBoxImage.Information);
     private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (closed) return;

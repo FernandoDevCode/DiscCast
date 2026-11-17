@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $cache = Join-Path $root '.tools'
 $packages = Join-Path $cache 'packages'
-$out = Join-Path $root 'dist/DiscCastPortable-v3'
+$out = Join-Path $root 'dist/DiscCastPortable-v4'
 New-Item -ItemType Directory -Force $cache, $packages | Out-Null
 
 function Get-PinnedFile($url, $path, $sha256) {
@@ -31,6 +31,10 @@ foreach ($entry in $nuget.GetEnumerator()) {
 $mtxZip = Join-Path $cache 'mediamtx.zip'
 Get-PinnedFile 'https://github.com/bluenviron/mediamtx/releases/download/v1.21.3/mediamtx_v1.21.3_windows_amd64.zip' $mtxZip 'B2F5246B07CB72961DF03B8D5E8CAD43DC657BCF3F49A87BB031BDF22721AF74'
 $ffZip = Join-Path $cache 'ffmpeg.zip'
+$cloudflared = Join-Path $cache 'cloudflared-2026.11.0.exe'
+Get-PinnedFile 'https://github.com/cloudflare/cloudflared/releases/download/2026.11.0/cloudflared-windows-amd64.exe' $cloudflared 'D5C1D82031DA6253DCDCFF64C944CD0FE063016EDEB2E4FD088075FC9BD52D0A'
+$tunnelLicense = Join-Path $cache 'cloudflared-LICENSE.txt'
+Get-PinnedFile 'https://raw.githubusercontent.com/cloudflare/cloudflared/2026.11.0/LICENSE' $tunnelLicense '58D1E17FFE5109A7AE296CAAFCADFDBE6A7D176F0BC4AB01E12A689B0499D8BD'
 Get-PinnedFile 'https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-12-15-40/ffmpeg-N-128837-g986bab2b47-win64-gpl.zip' $ffZip '1A205709149F66A7A8F9E2EEE14E6E1D35AF6D72F6A0C5016434088214197E69'
 
 $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
@@ -62,6 +66,8 @@ $ffmpeg = Get-ChildItem (Join-Path $cache 'ffmpeg') -Recurse -Filter ffmpeg.exe 
 $ffLicense = Get-ChildItem (Join-Path $cache 'ffmpeg') -Recurse -Filter LICENSE.txt | Select-Object -First 1
 New-Item -ItemType Directory -Force (Join-Path $out 'tools'), (Join-Path $out 'licenses') | Out-Null
 Copy-Item $ffmpeg.FullName (Join-Path $out 'tools/ffmpeg.exe') -Force
+Copy-Item $cloudflared (Join-Path $out 'tools/cloudflared.exe') -Force
+Copy-Item $tunnelLicense (Join-Path $out 'licenses/cloudflared-Apache-2.0.txt') -Force
 Copy-Item (Join-Path $cache 'mediamtx/mediamtx.exe') (Join-Path $out 'tools/mediamtx.exe') -Force
 Copy-Item $ffLicense.FullName (Join-Path $out 'licenses/FFmpeg-GPL-3.0.txt') -Force
 Copy-Item (Join-Path $cache 'mediamtx/LICENSE') (Join-Path $out 'licenses/MediaMTX-MIT.txt') -Force

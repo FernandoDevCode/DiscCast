@@ -82,7 +82,7 @@ public static class Program
                     {
                         address.Text = "convite inválido";
                         Control<Button>("ConnectButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                        Check(status.Text.Contains("convite RTSP completo"), "A interface não explicou o convite inválido.");
+                        Check(status.Text.Contains("convite completo"), "A interface não explicou o convite inválido.");
                         transmit.IsChecked = true;
                     }
 
@@ -91,7 +91,7 @@ public static class Program
                 }
 
                 Console.WriteLine(args.Length > 0
-                    ? "OK: dois ciclos RTSP no player WPF, com remoção da janela nativa ao voltar a Transmitir."
+                    ? "OK: dois ciclos de reprodução no WPF, com remoção da janela nativa ao voltar a Transmitir."
                     : "OK: tema, seleção de áudio, janela compacta, validação de convite e troca de abas.");
             }
             catch (Exception ex)

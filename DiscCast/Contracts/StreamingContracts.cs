@@ -20,7 +20,7 @@ public sealed record StreamProfile(int Width, int Height, int FramesPerSecond)
     public static StreamProfile High { get; } = new(1920, 1080, 60);
     public string Label => $"{Height}p · {FramesPerSecond} FPS";
 }
-public sealed record BroadcastRequest(VideoSource Source, AudioSelection Audio, StreamProfile Profile);
+public sealed record BroadcastRequest(VideoSource Source, AudioSelection Audio, StreamProfile Profile, bool Internet = false);
 public sealed record BroadcastStatus(BroadcastState State, string Message, string? RoomAddress = null, string? Encoder = null, bool HasAudio = false);
 
 public interface IBroadcastSession : IAsyncDisposable

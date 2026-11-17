@@ -65,6 +65,16 @@
             </StackPanel>
           </Border>
 
+          <Border Style="{StaticResource Card}" Padding="18,14" Margin="0,0,10,10">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="260"/></Grid.ColumnDefinitions>
+              <TextBlock Text="Onde assistir" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
+              <ComboBox x:Name="RouteBox" Grid.Column="2" SelectedIndex="0" AutomationProperties.Name="Onde assistir">
+                <ComboBoxItem Content="Internet · túnel de teste"/>
+                <ComboBoxItem Content="Rede local / VPN"/>
+              </ComboBox>
+            </Grid>
+          </Border>
           <Border Style="{StaticResource Card}" Padding="18,14" Margin="0,0,10,0">
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="260"/></Grid.ColumnDefinitions>

@@ -1,3 +1,3 @@
-$exe = Join-Path $PSScriptRoot 'dist/DiscCastPortable-v3/DiscCast.exe'
+$exe = Join-Path $PSScriptRoot 'dist/DiscCastPortable-v4/DiscCast.exe'
 if (-not (Test-Path $exe)) { throw 'Aplicativo ausente. Execute .\build.ps1 primeiro.' }
 & $exe

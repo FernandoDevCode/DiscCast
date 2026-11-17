@@ -3,7 +3,7 @@ using DiscCast.Services;
 using System.Diagnostics;
 using System.IO;
 
-string tools = Path.GetFullPath("dist/DiscCastPortable-v3/tools");
+string tools = Path.GetFullPath("dist/DiscCastPortable-v4/tools");
 var b = Screen.PrimaryScreen!.Bounds;
 Console.WriteLine($"Capture bounds: {b}");
 var source = new VideoSource("Desktop de teste", VideoSourceKind.Monitor, $"desktop|{b.X}|{b.Y}|{b.Width}|{b.Height}", b.Width, b.Height);

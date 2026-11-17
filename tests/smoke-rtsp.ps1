@@ -1,8 +1,8 @@
 param([switch]$Desktop, [switch]$LibVlc, [switch]$WindowProbe)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$ffmpeg = Join-Path $root 'dist/DiscCastPortable-v3/tools/ffmpeg.exe'
-$mediamtx = Join-Path $root 'dist/DiscCastPortable-v3/tools/mediamtx.exe'
+$ffmpeg = Join-Path $root 'dist/DiscCastPortable-v4/tools/ffmpeg.exe'
+$mediamtx = Join-Path $root 'dist/DiscCastPortable-v4/tools/mediamtx.exe'
 if (-not (Test-Path $ffmpeg) -or -not (Test-Path $mediamtx)) { throw 'Execute build.ps1 antes do teste.' }
 $config = Join-Path $env:TEMP "disccast-smoke-$PID.yml"
 $port = 18554

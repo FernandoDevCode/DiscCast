@@ -1,14 +1,20 @@
-# DiscCast — revisão 3
+# DiscCast — revisão 4
 
-Aplicativo nativo C# / WPF / .NET 8 x64 para compartilhar tela ou janela com áudio em LAN/VPN privada. FFmpeg captura e codifica, MediaMTX publica RTSP/TCP autenticado, LibVLCSharp.WPF reproduz.
+Aplicativo Windows x64 para compartilhar tela ou janela com áudio pela internet ou pela rede local.
 
 ## Usar a versão portátil
 
-1. Baixe `DiscCast-v3-windows-x64.zip` em **Releases** no GitHub.
+1. Baixe `DiscCast-v4-windows-x64.zip` em **Releases** no GitHub.
 2. Clique com o botão direito no ZIP e escolha **Extrair tudo**.
 3. Abra a pasta extraída e execute `DiscCast.exe`. O pacote já inclui o runtime .NET e as dependências.
 
-No transmissor: escolha monitor/janela, configure áudio e qualidade, clique **Iniciar transmissão**, copie o convite. No espectador, abra **Assistir**, use **Colar** e clique em **Conectar**. Você também pode pressionar Enter no campo do convite. Voltar a **Transmitir** encerra a reprodução local e conserva o convite para reconectar. O convite inclui a senha de leitura. A rede precisa permitir TCP 8554 entre os PCs. O aplicativo não altera firewall nem roteador; consulte **Ajuda de rede**. Use LAN ou VPN privada, nunca encaminhamento público de portas.
+1. Quem vai transmitir escolhe a fonte e deixa **Onde assistir** em **Internet · túnel de teste**.
+2. Clique em **Iniciar transmissão**. Quando aparecer **Ao vivo**, clique em **Copiar convite**.
+3. Quem recebe o link abre **Assistir**, cola o convite e clica em **Conectar**. Para inverter os papéis, a outra pessoa inicia uma sala no próprio PC.
+
+O PC de quem transmite hospeda a sala. O aplicativo abre um [túnel temporário da Cloudflare](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/) e envia vídeo e áudio por HLS. O serviço é destinado a testes, sem garantia de disponibilidade. Há atraso de alguns segundos. O link HTTPS contém a credencial de acesso da sala, então envie apenas a quem deve assistir. Cada sala recebe um endereço novo, encerrado junto com a transmissão. As conexões de saída do Cloudflare Tunnel precisam estar liberadas na rede.
+
+Para usar **Rede local / VPN**, os dois PCs precisam alcançar a porta TCP 8554 do transmissor pela rede privada.
 
 ## Compilar a partir do código
 
@@ -17,7 +23,7 @@ No transmissor: escolha monitor/janela, configure áudio e qualidade, clique **I
 .\run.ps1
 ```
 
-O build gera a pasta `dist\DiscCastPortable-v3`.
+O build gera a pasta `dist\DiscCastPortable-v4`.
 
 ## Dois modos de áudio
 
@@ -32,6 +38,7 @@ Windows 10 22H2 build 19045 não oferece a API mínima utilizada: nesta versão 
 
 ## O que foi corrigido
 
+- O modo **Internet** abre e encerra um túnel HTTPS junto com a sala. Ambos os PCs usam o mesmo app. Só quem transmite abre o túnel.
 - O player é criado ao conectar em Assistir e removido ao sair da aba, desconectar ou receber um erro. Cada aba exibe seu próprio status.
 - Fonte, áudio e qualidade ficam em um formulário mais compacto. O botão de iniciar e, durante a transmissão, os botões de copiar e encerrar ficam na barra inferior.
 - Modos de áudio separados, associados à API nativa de inclusão/exclusão.
@@ -44,6 +51,7 @@ Windows 10 22H2 build 19045 não oferece a API mínima utilizada: nesta versão 
 Ambiente Windows build 26300 x64, nas verificações do projeto:
 
 - Build Release sem erros/avisos.
+- Fluxo de teste H.264/AAC entregue pelo túnel HTTPS. FFmpeg decodificou vídeo e áudio, o player WPF abriu o convite duas vezes e um caminho local de sala desconhecida foi recusado. O teste usou mídia sintética e um PC.
 - `WindowProbe`: tema WPF, seleção de áudio, layout compacto, validação de convite e troca de abas. Imagens em `.tools/ui-transmit-v3.png` e `.tools/ui-watch-v3.png`.
 - `smoke-rtsp.ps1 -WindowProbe`: dois ciclos com fluxo de teste RTSP, saída de vídeo nativa no WPF e verificação de que a janela nativa foi destruída ao voltar para Transmitir. O LibVLC emitiu avisos do decodificador e do Direct3D durante a execução, que terminou com sucesso.
 - `AudioProbe`: processo real reproduzindo 997 Hz; amplitude incluída 0,240932, excluída 0,000066 (~71 dB de supressão). Comprova inclusão/exclusão nativa do processo de teste, não uma chamada real do Discord.

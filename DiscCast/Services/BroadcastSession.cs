@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -11,7 +12,7 @@ public sealed class BroadcastSession : IBroadcastSession
 {
     private readonly string toolsDirectory;
     private readonly SemaphoreSlim lifecycle = new(1, 1);
-    private Process? server, encoder;
+    private Process? server, encoder, tunnel;
     private ProcessAudioCapture? audio;
     private AudioCapturePlan? audioPlan;
     private CancellationTokenSource? cancellation;
@@ -41,11 +42,22 @@ public sealed class BroadcastSession : IBroadcastSession
             SetStatus(new(BroadcastState.Starting, "Preparando a transmissão…"));
             string ffmpeg = Path.Combine(toolsDirectory, "ffmpeg.exe"), mtx = Path.Combine(toolsDirectory, "mediamtx.exe");
             if (!File.Exists(ffmpeg) || !File.Exists(mtx)) throw new FileNotFoundException("FFmpeg ou MediaMTX ausente. Execute build.ps1 e mantenha a pasta portátil completa.");
-            string room = Secret(12), publishPass = Secret(18), readPass = Secret(18), ip = LocalAddress();
+            string cloudflared = Path.Combine(toolsDirectory, "cloudflared.exe");
+            if (request.Internet && !File.Exists(cloudflared))
+                throw new FileNotFoundException("Ferramenta de túnel ausente. Extraia a pasta portátil completa.");
+            string room = Secret(request.Internet ? 32 : 12), publishPass = Secret(18), readPass = Secret(18);
+            string ip = request.Internet ? "127.0.0.1" : LocalAddress();
+            int rtspPort = request.Internet ? FindLoopbackPort() : 8554;
+            int hlsPort = request.Internet ? FindLoopbackPort(rtspPort) : 0;
+            string hls = request.Internet
+                ? $"hls: true\nhlsAddress: 127.0.0.1:{hlsPort}\nhlsAlwaysRemux: true\nhlsVariant: mpegts\nhlsSegmentDuration: 2s\n"
+                : "hls: false\n";
+            // The high-entropy path is the HTTPS invitation's bearer secret. Only this path permits reads.
+            string readers = request.Internet ? "  - user: any\n" : $"  - user: viewer\n    pass: {readPass}\n";
             var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             configPath = Path.Combine(Path.GetTempPath(), $"disccast-{room}.yml");
-            await File.WriteAllTextAsync(configPath, $"logLevel: info\nlogDestinations: [stdout]\nrtsp: true\nrtspAddress: {ip}:8554\nrtspTransports: [tcp]\nrtmp: false\nhls: false\nwebrtc: false\nsrt: false\nmoq: false\napi: false\nmetrics: false\npprof: false\nplayback: false\nauthMethod: internal\nauthInternalUsers:\n  - user: publisher\n    pass: {publishPass}\n    ips: [{ip}]\n    permissions:\n      - action: publish\n        path: {room}\n  - user: viewer\n    pass: {readPass}\n    ips: []\n    permissions:\n      - action: read\n        path: {room}\npaths:\n  {room}:\n    source: publisher\n", ct);
-            string Redact(string line) => line.Replace(publishPass, "[senha]").Replace(readPass, "[senha]");
+            await File.WriteAllTextAsync(configPath, $"logLevel: info\nlogDestinations: [stdout]\nrtsp: true\nrtspAddress: {ip}:{rtspPort}\nrtspTransports: [tcp]\nrtmp: false\n{hls}webrtc: false\nsrt: false\nmoq: false\napi: false\nmetrics: false\npprof: false\nplayback: false\nauthMethod: internal\nauthInternalUsers:\n  - user: publisher\n    pass: {publishPass}\n    ips: [{ip}]\n    permissions:\n      - action: publish\n        path: {room}\n{readers}    ips: []\n    permissions:\n      - action: read\n        path: {room}\npaths:\n  {room}:\n    source: publisher\n", ct);
+            string Redact(string line) => line.Replace(publishPass, "[senha]").Replace(readPass, "[senha]").Replace(room, "[sala]");
             server = ChildProcess.Start(mtx, [configPath], log: line =>
             {
                 if (line.Contains("is publishing to path", StringComparison.OrdinalIgnoreCase)) published.TrySetResult();
@@ -72,7 +84,7 @@ public sealed class BroadcastSession : IBroadcastSession
             }
             ct.ThrowIfCancellationRequested();
             bool nvenc = await NvencAvailable(ffmpeg, ct);
-            var args = EncoderArguments(request, audio, nvenc, $"rtsp://publisher:{publishPass}@{ip}:8554/{room}");
+            var args = EncoderArguments(request, audio, nvenc, $"rtsp://publisher:{publishPass}@{ip}:{rtspPort}/{room}");
             encoder = ChildProcess.Start(ffmpeg, args, audio != null, line =>
             {
                 lock (logLock) { lastError = (lastError + "\n" + Redact(line)).Trim(); if (lastError.Length > 4000) lastError = lastError[^4000..]; }
@@ -89,8 +101,36 @@ public sealed class BroadcastSession : IBroadcastSession
             }
             await published.Task.WaitAsync(TimeSpan.FromSeconds(15), ct);
             if (encoder.HasExited || server.HasExited) throw new InvalidOperationException(lastError);
-            SetStatus(new(BroadcastState.Live, audioMessage + (ip == "127.0.0.1" ? " · Sem IP privado: acesso somente neste PC." : ""),
-                $"rtsp://viewer:{readPass}@{ip}:8554/{room}", nvenc ? "NVIDIA NVENC" : "CPU · H.264", audio != null));
+            string invitation = $"rtsp://viewer:{readPass}@{ip}:{rtspPort}/{room}";
+            string route = ip == "127.0.0.1" ? " · Acesso somente neste PC." : "";
+            if (request.Internet)
+            {
+                SetStatus(new(BroadcastState.Starting, "Abrindo o túnel pela internet…"));
+                string origin = $"http://127.0.0.1:{hlsPort}";
+                var address = new TaskCompletionSource<Uri>(TaskCreationOptions.RunContinuationsAsynchronously);
+                // Use an isolated config so installed named tunnels cannot change this session.
+                tunnelConfigPath = configPath + ".tunnel";
+                await File.WriteAllTextAsync(tunnelConfigPath, "{}\n", ct);
+                tunnel = ChildProcess.Start(cloudflared, ["tunnel", "--config", tunnelConfigPath, "--no-autoupdate",
+                    "--protocol", "http2", "--metrics", "127.0.0.1:0", "--url", origin], log: line =>
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(line, @"https://[a-z0-9-]+\.trycloudflare\.com\b");
+                    if (match.Success) address.TrySetResult(new Uri(match.Value));
+                });
+                tunnel.Exited += (_, _) => UnexpectedExit(current, "O túnel da Cloudflare encerrou");
+                if (tunnel.HasExited) throw new InvalidOperationException("Não foi possível iniciar o túnel da Cloudflare.");
+                try
+                {
+                    var host = await address.Task.WaitAsync(TimeSpan.FromSeconds(25), ct);
+                    var playlist = new Uri(host, $"/{room}/index.m3u8");
+                    await WaitForPlaylistAsync(playlist, ct);
+                    invitation = playlist.AbsoluteUri;
+                }
+                catch (TimeoutException) { throw new InvalidOperationException("O túnel não disponibilizou a transmissão. Confira sua conexão e tente novamente."); }
+                route = " · Internet via Cloudflare";
+            }
+            ct.ThrowIfCancellationRequested();
+            SetStatus(new(BroadcastState.Live, audioMessage + route, invitation, nvenc ? "NVIDIA NVENC" : "CPU · H.264", audio != null));
         }
         catch (Exception ex)
         {
@@ -136,6 +176,9 @@ public sealed class BroadcastSession : IBroadcastSession
     private async Task CleanupAsync()
     {
         cancellation?.Cancel();
+        var tunnelToStop = tunnel; tunnel = null;
+        await ChildProcess.TerminateAsync(tunnelToStop);
+        if (tunnelConfigPath != null) { try { File.Delete(tunnelConfigPath); } catch (IOException) { } tunnelConfigPath = null; }
         var encoderToStop = encoder; encoder = null;
         await ChildProcess.TerminateAsync(encoderToStop);
         if (audioTask != null) { try { await audioTask; } catch { } audioTask = null; }
@@ -147,6 +190,31 @@ public sealed class BroadcastSession : IBroadcastSession
         if (configPath != null) { try { File.Delete(configPath); } catch (IOException) { } configPath = null; }
     }
     public async ValueTask DisposeAsync() { await StopAsync(); lifecycle.Dispose(); }
+    private string? tunnelConfigPath;
+    private static int FindLoopbackPort(int except = 0)
+    {
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        int port = ((IPEndPoint)socket.LocalEndPoint!).Port;
+        return port == except ? FindLoopbackPort(except) : port;
+    }
+    private static async Task WaitForPlaylistAsync(Uri uri, CancellationToken cancellation)
+    {
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+        var elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            try
+            {
+                var playlist = await client.GetStringAsync(uri, cancellation);
+                if (playlist.StartsWith("#EXTM3U", StringComparison.Ordinal)) return;
+            }
+            catch (System.Net.Http.HttpRequestException) { }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { }
+            await Task.Delay(1000, cancellation);
+        }
+        throw new TimeoutException();
+    }
     private static string Secret(int bytes) => Convert.ToHexString(RandomNumberGenerator.GetBytes(bytes)).ToLowerInvariant();
     private static string LocalAddress() => NetworkInterface.GetAllNetworkInterfaces()
         .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
